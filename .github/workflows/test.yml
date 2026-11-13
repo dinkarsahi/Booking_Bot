@@ -1,0 +1,34 @@
+name: Test alert
+
+on:
+  workflow_dispatch:
+    inputs:
+      venue:
+        description: "burgess, tanner or all"
+        default: "burgess"
+      date:
+        description: "Date to check, YYYY-MM-DD (blank = 5 days from today)"
+        default: ""
+      start_from:
+        description: "Earliest start time"
+        default: "07:00"
+      start_to:
+        description: "Latest start time"
+        default: "10:00"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run test check
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          IN_VENUE: ${{ inputs.venue }}
+          IN_DATE: ${{ inputs.date }}
+          IN_FROM: ${{ inputs.start_from }}
+          IN_TO: ${{ inputs.start_to }}
+        run: python3 court_bot.py test --venue "$IN_VENUE" --date "$IN_DATE" --start-from "$IN_FROM" --start-to "$IN_TO"
