@@ -15,6 +15,8 @@ import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -63,11 +65,17 @@ def fmt(minutes):
     return "%02d:%02d" % (minutes // 60, minutes % 60)
 
 
-def http_json(url, payload=None, tries=3):
-    last = None
+BROWSER_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/130.0.0.0 Safari/537.36")
+
+
+def http_json(url, payload=None, tries=3, extra_headers=None):
+    detail = ""
     for i in range(tries):
         try:
-            headers = {"User-Agent": "Mozilla/5.0 (personal court watcher)", "Accept": "application/json"}
+            headers = {"User-Agent": BROWSER_UA, "Accept": "application/json, text/javascript, */*; q=0.01",
+                       "Accept-Language": "en-GB,en;q=0.9"}
+            headers.update(extra_headers or {})
             data = None
             if payload is not None:
                 data = json.dumps(payload).encode()
@@ -75,10 +83,17 @@ def http_json(url, payload=None, tries=3):
             req = urllib.request.Request(url, data=data, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.load(resp)
-        except Exception as exc:  # never include the URL in errors (Telegram URLs hold the token)
-            last = exc
+        except Exception as exc:
+            # Only the host is reported, never the full URL (Telegram URLs contain the token).
+            detail = "%s %s from %s" % (type(exc).__name__, getattr(exc, "code", ""), urllib.parse.urlparse(url).netloc)
+            if isinstance(exc, urllib.error.HTTPError):
+                try:
+                    detail += " (server=%s): %s" % (exc.headers.get("Server", "?"),
+                                                    exc.read(200).decode("utf-8", "replace").replace("\n", " "))
+                except Exception:
+                    pass
             time.sleep(2 * (i + 1))
-    raise RuntimeError("request failed after %d tries: %s %s" % (tries, type(last).__name__, getattr(last, "code", "")))
+    raise RuntimeError("request failed after %d tries: %s" % (tries, detail))
 
 
 def bookable_until(now):
@@ -92,7 +107,8 @@ def bookable_until(now):
 def fetch(slug, start, end):
     url = "%s/v0/VenueBooking/%s/GetVenueSessions?resourceID=&startDate=%s&endDate=%s&roleId=&_=%d" % (
         BASE, slug, start, end, int(time.time() * 1000))
-    return http_json(url)
+    return http_json(url, extra_headers={"Referer": "%s/%s/Booking/BookByDate" % (BASE, slug),
+                                         "X-Requested-With": "XMLHttpRequest"})
 
 
 def load_data(venue, start, end, fixture=None):
