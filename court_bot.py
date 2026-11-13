@@ -22,6 +22,18 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+try:
+    from curl_cffi import requests as curl_requests
+except ImportError:
+    curl_requests = None
+    if os.environ.get("GITHUB_ACTIONS"):
+        import subprocess
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "curl_cffi"], check=False)
+        try:
+            from curl_cffi import requests as curl_requests
+        except ImportError:
+            curl_requests = None
+
 TZ = ZoneInfo("Europe/London")
 BASE = "https://clubspark.lta.org.uk"
 STATE_FILE = Path(__file__).with_name("state.json")
@@ -80,6 +92,14 @@ def http_json(url, payload=None, tries=3, extra_headers=None):
             if payload is not None:
                 data = json.dumps(payload).encode()
                 headers["Content-Type"] = "application/json"
+            if data is None and "clubspark" in url and curl_requests is not None:
+                # Cloudflare blocks the plain Python TLS fingerprint; impersonate Chrome instead.
+                r = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=30)
+                if r.status_code != 200:
+                    raise RuntimeError("HTTP %s from %s (server=%s): %s" % (
+                        r.status_code, urllib.parse.urlparse(url).netloc, r.headers.get("server", "?"),
+                        r.text[:200].replace("\n", " ")))
+                return r.json()
             req = urllib.request.Request(url, data=data, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.load(resp)
