@@ -28,7 +28,7 @@ except ImportError:
     curl_requests = None
     if os.environ.get("GITHUB_ACTIONS"):
         import subprocess
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "curl_cffi"], check=False)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", "curl_cffi"], check=False)
         try:
             from curl_cffi import requests as curl_requests
         except ImportError:
